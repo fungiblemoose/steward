@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api";
 import { pctColor, statusBadge } from "../util";
 import NodeChart from "./NodeChart";
+import Balance from "./Balance";
 
 function Bar({ label, pct }) {
   return (
@@ -57,6 +58,13 @@ export default function Dashboard({ snapshot }) {
             </div>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm uppercase tracking-wide text-gray-500 mb-3">
+          Cluster balance
+        </h2>
+        <Balance />
       </section>
 
       {chartNode && (

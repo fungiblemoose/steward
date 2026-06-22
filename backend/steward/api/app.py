@@ -248,6 +248,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return sw.flags_dict()
 
     # ------------------------------------------------------------------ #
+    # Balancer (Tier 0) — dry preview of what the autonomous balancer would do
+    # ------------------------------------------------------------------ #
+    @app.get("/api/balancer/simulate", dependencies=[Depends(auth_dep)])
+    async def balancer_simulate(sw: Steward = Depends(get_steward)):
+        return sw.simulate_balancer()
+
+    # ------------------------------------------------------------------ #
     # LLM features (degrade gracefully when not configured)
     # ------------------------------------------------------------------ #
     @app.get("/api/llm/status", dependencies=[Depends(auth_dep)])
