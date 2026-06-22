@@ -1,0 +1,44 @@
+[project]
+name = "steward"
+version = "0.1.0"
+description = "A local-LLM Proxmox babysitter: deterministic monitoring with a natural-language control plane."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Steward contributors" }]
+dependencies = [
+    "fastapi==0.138.0",
+    "uvicorn[standard]==0.49.0",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "httpx==0.28.1",
+    "websockets==16.0",
+]
+
+[project.optional-dependencies]
+# The real Proxmox client. Never exercised in dev/CI; gated behind config.
+proxmox = ["proxmoxer==2.3.0"]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "anyio==4.14.0",
+]
+
+[project.scripts]
+steward = "steward.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["steward*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning:steward.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
