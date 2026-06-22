@@ -74,7 +74,12 @@ Decisions made autonomously where the spec left room. Each is reversible.
 - Notification channels shipped: ntfy + generic webhook + noop. Want email/Slack?
 - Retention is a simple time-based prune. Want downsampled rollups for long-term
   charts (e.g. 1-min raw → 5-min/1-hour aggregates)?
-- **Balancer dimension**: balance on CPU, memory, or a weighted blend? (Default:
-  CPU, with memory as a hard headroom constraint on candidate targets.)
-- **Escalation trigger**: how many repeats / how long unresolved before paging
-  Claude? (Default proposal: ≥3 occurrences over ≥10 min, still firing.)
+- Where the Tier-0 LXC lives — pve vs pve2 — and whether to run a tiny
+  out-of-band heartbeat on pi24 so a cluster outage can still phone home.
+
+## Agentic-SRE decisions (locked)
+- **Balancer dimension = blended CPU+mem** (weighted, default 0.5/0.5,
+  configurable), with **memory as a hard headroom constraint** on candidate
+  targets — never migrate onto a node short on RAM, however good the CPU math.
+- **Escalation trigger = ≥3 occurrences over ≥10 min, still firing.** Only
+  deduped, unresolved, repeated incidents page Claude.

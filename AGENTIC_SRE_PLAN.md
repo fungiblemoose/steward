@@ -87,18 +87,21 @@ to move and where.
 | `cluster_imbalance(snap, dim) -> float` | new `balancer/` module | stddev of online-node CPU/mem load; `0.0` = balanced |
 | `suggest_balancing_migrations(snap, dim, …) -> list[(vmid, target)]` | `balancer/` | greedy: busiest guest on the most-overloaded node → least-loaded eligible target; capped at `max_concurrent` |
 | `migration_impact(snap, vmid, target)` | `actions/planner.py` | simulate the move; refuse if it doesn't reduce imbalance by more than a margin, or if `mem/bandwidth` cost outweighs benefit |
-| `builtin.autonomous_balancer` check | `rules/builtins.py` | `target="cluster"`, fires when `imbalance_cpu > threshold`; `auto_execute=True` |
+| `builtin.autonomous_balancer` check | `rules/builtins.py` | `target="cluster"`, fires when the **blended** imbalance score exceeds threshold; `auto_execute=True` |
 | `imbalance_cpu` / `imbalance_mem` derived fields | `models.py::ClusterSnapshot` | computed each poll so the rule engine can threshold them |
 | `count_in_flight(type) -> int` | `store/db.py` | enforce a max-concurrent-migrations cap (rate limit alone isn't enough) |
 | realistic migration delay | `proxmox/mock.py` | so tests can prove the concurrency cap actually holds (real migrations take 10–120s; the mock is currently instant) |
 
 ### Algorithm (deterministic, testable)
 
-1. Each poll, compute `imbalance_cpu/mem` (stddev of online-node loads) and
-   stash on the snapshot.
-2. The `autonomous_balancer` check fires when imbalance exceeds a threshold *and*
-   has been trending up over the ring buffer (don't shuffle a momentarily-spiky
-   but stable cluster).
+1. Each poll, compute `imbalance_cpu` and `imbalance_mem` (stddev of online-node
+   loads) and a **blended score** = `w_cpu·imbalance_cpu + w_mem·imbalance_mem`
+   (default weights 0.5/0.5, configurable); stash all three on the snapshot.
+2. The `autonomous_balancer` check fires when the blended score exceeds a
+   threshold *and* has been trending up over the ring buffer (don't shuffle a
+   momentarily-spiky but stable cluster). Memory is *also* a hard headroom
+   constraint on candidate targets — never migrate onto a node that lacks RAM
+   for the guest, regardless of how good the CPU math looks.
 3. `suggest_balancing_migrations` picks the busiest movable guest on the hottest
    node and the best eligible target (online, has headroom, not the source).
 4. Each candidate runs through `migration_impact`; reject moves whose benefit <
@@ -232,11 +235,14 @@ first, escalate to Claude only if it's stuck.
 - **Escalation spam / cost** → incident dedup/aging; only unresolved, repeated
   incidents page Claude.
 
+## Decisions (locked)
+
+- **Balancer dimension: blended CPU+mem** — weighted score (default 0.5/0.5,
+  configurable), with **memory as a hard headroom constraint** on candidate
+  targets. ✅
+- **Escalation trigger: ≥3 occurrences over ≥10 min, still firing.** ✅
+
 ## Open questions
 
-- Balancer dimension priority — balance on **CPU**, **memory**, or a weighted
-  blend? (Default: CPU, with memory as a hard headroom constraint on targets.)
-- Escalation trigger threshold — how many repeats / how long unresolved before
-  paging Claude? (Default proposal: ≥3 occurrences over ≥10 min, still firing.)
 - Where the Tier-0 LXC lives — pve vs pve2 — and whether to also run a tiny
   out-of-band heartbeat on pi24 so "the cluster is down" can still alert.
