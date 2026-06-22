@@ -1,0 +1,29 @@
+# Steward — runs against the built-in mock cluster out of the box.
+# `docker compose up` from a clean clone gives a working demo, no secrets needed.
+services:
+  steward:
+    build: .
+    image: steward:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # Safe defaults; override via a .env file (see .env.example).
+      STEWARD_PROXMOX_MODE: "mock"
+      STEWARD_DRY_RUN: "true"
+      STEWARD_POLL_INTERVAL_S: "5"
+      STEWARD_DB_PATH: "/app/data/steward.db"
+      # Point at a local LLM to enable chat/NL-checks (optional). On Linux you
+      # may need network_mode or host.docker.internal to reach the host.
+      STEWARD_LLM_BASE_URL: "${STEWARD_LLM_BASE_URL:-}"
+      STEWARD_LLM_MODEL: "${STEWARD_LLM_MODEL:-llama3.2:3b}"
+      STEWARD_LLM_API_KEY: "${STEWARD_LLM_API_KEY:-ollama}"
+      STEWARD_AUTH_TOKEN: "${STEWARD_AUTH_TOKEN:-}"
+    volumes:
+      - steward-data:/app/data
+    restart: unless-stopped
+    # Uncomment to reach an Ollama running on the Docker host (Linux):
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+volumes:
+  steward-data:
