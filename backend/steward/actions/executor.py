@@ -1,16 +1,21 @@
 """The action executor — the single chokepoint for anything that mutates.
 
 Every action, whether proposed by a rule, suggested by the LLM, or triggered
-by a human, flows through here. Guardrails are enforced *in order* (see §5 of
-the spec):
+by a human, flows through here. The gates are enforced in this exact execution
+order in ``_run`` (a row is audited no matter where it stops):
 
-  1. Global kill switch (paused)  -> nothing executes; still audited.
-  2. Dry-run flag (default ON)     -> simulate, never call mutating client APIs.
-  3. Allow-list                    -> only allow-listed guests may *auto*-act.
+  0. Approval gating               -> handled *before* this method by
+                                      propose/approve. auto_execute checks and
+                                      human-approved actions reach _run;
+                                      everything else waits in the queue.
+  1. Resolve dynamic params        -> e.g. pick a migration target; pure
+                                      computation, mutates nothing.
+  2. Global kill switch (paused)   -> nothing executes; still audited.
+  3. Allow-list                    -> only allow-listed guests may *auto*-act;
+                                      a human approval is the stronger gate and
+                                      may override it.
   4. Cooldown + hourly rate limit  -> refuse if exceeded.
-  5. Approval gating               -> handled by propose/approve; auto_execute
-                                      checks bypass the queue, everything else
-                                      waits for a human.
+  5. Dry-run flag (default ON)     -> simulate, never call mutating client APIs.
   6. Audit everything              -> every proposed/executed/rejected/blocked
                                       action gets a row with before/after and a
                                       reversibility note.
