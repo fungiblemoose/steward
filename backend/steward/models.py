@@ -44,6 +44,7 @@ class NodeMetric(BaseModel):
     node: str
     status: NodeStatus = NodeStatus.unknown
     cpu_pct: float = 0.0          # 0..100
+    cpu_cores: int = 0            # physical cores (for core-weighted balancing math)
     mem_used_mb: float = 0.0
     mem_total_mb: float = 0.0
     disk_used_gb: float = 0.0

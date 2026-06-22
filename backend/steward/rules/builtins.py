@@ -71,6 +71,29 @@ def builtin_checks() -> list[Check]:
             description="Fires when a storage pool is more than 85% full.",
         ),
         Check(
+            id="builtin.autonomous_balancer",
+            name="Autonomous load balancer",
+            probe_type=ProbeType.proxmox_metric,
+            target="cluster",
+            condition=Condition(metric="imbalance_blended", op=ComparisonOp.gt, threshold=15.0),
+            severity=Severity.info,
+            cooldown_s=600,
+            source="builtin",
+            enabled=False,  # opt-in: the operator turns this on deliberately
+            auto_execute=True,
+            description=(
+                "Tier-0 balancer. When blended CPU+mem load imbalance (stddev across "
+                "nodes) exceeds the threshold and is trending up, migrate a guest to "
+                "rebalance. DISABLED by default; even when enabled, a guest only "
+                "auto-moves if it is allow-listed and dry-run is off."
+            ),
+            suggested_action=SuggestedAction(
+                type=ActionType.migrate,
+                params={"strategy": "autonomous_balance"},
+                note="Deterministic balancer picks the guest and target that most reduce imbalance.",
+            ),
+        ),
+        Check(
             id="builtin.cluster_quorum_lost",
             name="Cluster quorum lost",
             probe_type=ProbeType.proxmox_metric,

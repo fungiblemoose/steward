@@ -14,6 +14,7 @@ import logging
 from typing import Optional
 
 from steward.actions.executor import ActionExecutor, RuntimeFlags
+from steward.balancer import blended_imbalance, suggest_balancing_migrations, trending_up
 from steward.checks.probes import run_probe
 from steward.checks.schema import Check, ProbeType
 from steward.config import Settings
@@ -173,6 +174,11 @@ class Steward:
                                          ev.severity)
             await self._maybe_suggest(ev, checks)
 
+        # Tier-0 autonomous balancer runs its own deterministic step: it executes
+        # moves directly (never via _maybe_suggest, which would double-fire).
+        balancer_events = await self._run_balancer(checks, snap)
+        events += balancer_events
+
         self._broadcast({
             "type": "tick",
             "snapshot": snap.model_dump(mode="json"),
@@ -259,6 +265,77 @@ class Steward:
                              "slope_per_s": fc.slope_per_s, "threshold": threshold},
                 ))
         return events
+
+    async def _run_balancer(self, checks: list[Check], snap: ClusterSnapshot) -> list[Event]:
+        """Tier-0 deterministic load balancer.
+
+        Driven by the ``builtin.autonomous_balancer`` check (disabled by default,
+        so this is dormant unless an operator enables it). When the blended
+        CPU+mem imbalance exceeds the check's threshold *and* is trending up, it
+        proposes migrations and runs them through the guarded executor — which
+        still enforces kill-switch, allow-list, cooldown, and dry-run. No LLM.
+        """
+        bal = next((c for c in checks if c.id == "builtin.autonomous_balancer"), None)
+        if bal is None:  # check disabled or removed -> balancer off
+            return []
+
+        s = self.settings
+        blended = blended_imbalance(snap, s.balancer_weight_cpu, s.balancer_weight_mem)
+        if blended <= bal.condition.threshold:
+            return []
+        if s.balancer_require_trend and not trending_up(
+            list(self.ring), s.balancer_weight_cpu, s.balancer_weight_mem
+        ):
+            return []
+
+        # Per-balancer cooldown (reuse the engine's fire bookkeeping).
+        key = (bal.id, "cluster")
+        last = self.engine._last_fire.get(key)
+        if last is not None and (snap.ts - last) < bal.cooldown_s:
+            return []
+        # Let a recent migration settle before initiating another.
+        if self.store.recent_actions_of_type(
+            ActionType.migrate.value, snap.ts - s.balancer_migration_settle_s
+        ):
+            return []
+
+        moves = suggest_balancing_migrations(
+            snap,
+            w_cpu=s.balancer_weight_cpu, w_mem=s.balancer_weight_mem,
+            max_target_pct=s.balancer_max_target_pct,
+            min_improvement=s.balancer_min_improvement,
+            max_moves=s.balancer_max_moves_per_cycle,
+        )
+        if not moves:
+            return []
+
+        self.engine._last_fire[key] = snap.ts
+        summary = ", ".join(f"{m.name}({m.vmid}) {m.source}->{m.target}" for m in moves)
+        ev = Event(
+            ts=snap.ts, check_id=bal.id, check_name=bal.name, severity=bal.severity,
+            target="cluster", value=blended,
+            message=f"Cluster imbalance {blended:.1f} > {bal.condition.threshold:.0f}; "
+                    f"rebalancing: {summary}",
+            context={"blended_imbalance": blended,
+                     "moves": [{"vmid": m.vmid, "source": m.source, "target": m.target,
+                                "improvement": round(m.improvement, 2)} for m in moves]},
+        )
+        ev.id = await asyncio.to_thread(self.store.insert_event, ev)
+        if ev.severity in (Severity.warning, Severity.critical):
+            await self.notifier.send(f"[{ev.severity.value}] {ev.check_name}", ev.message, ev.severity)
+
+        for m in moves:
+            req = ActionRequest(
+                type=ActionType.migrate,
+                params={"vmid": m.vmid, "target": m.target, "node": m.source,
+                        "strategy": "autonomous_balance"},
+                reason=f"{bal.name}: imbalance {blended:.1f}, "
+                       f"move {m.name}({m.vmid}) {m.source}->{m.target} "
+                       f"(-{m.improvement:.1f})",
+                source="rule", check_id=bal.id, auto_execute=True,
+            )
+            await self.executor.run(req)
+        return [ev]
 
     async def _maybe_suggest(self, ev: Event, checks: list[Check]) -> None:
         check = next((c for c in checks if c.id == ev.check_id), None)

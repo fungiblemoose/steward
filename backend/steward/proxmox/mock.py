@@ -82,6 +82,7 @@ class MockProxmoxClient:
             node=node.name,
             status=NodeStatus.online if node.online else NodeStatus.offline,
             cpu_pct=round(cpu, 2),
+            cpu_cores=node.cpu_cores,
             mem_used_mb=round(mem_used, 1),
             mem_total_mb=node.mem_total_mb,
             disk_used_gb=round(disk_used, 1),

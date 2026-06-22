@@ -109,3 +109,41 @@ pull limits. **Try `docker compose up --build` on your machine to confirm.**
 **Still open / nice-to-have:** screenshots/gif in the README; coverage report in
 CI; "what changed?" diff view; migration planner v2 (bin-packing); RBAC. All in
 ROADMAP.
+
+---
+
+## 2026-06-22 — Phase 6: Tier-0 autonomous load balancer
+
+**Context.** First build off the `AGENTIC_SRE_PLAN.md` design (PR #3). Goal:
+deterministic, no-LLM live-migration balancing that runs on the poll loop and
+reuses the existing guarded executor. Branch: `feat/tier0-balancer`.
+
+**Built.**
+- `balancer/policy.py` — pure scoring + planning. `imbalance()` is the stddev of
+  online-node load on a dimension; `blended_imbalance()` weights CPU+mem;
+  `suggest_balancing_migrations()` greedily trial-migrates every running guest
+  onto every eligible target and keeps the move that most reduces blended
+  imbalance (subject to a min-improvement floor and a CPU+mem headroom cap, with
+  memory a *hard* constraint). `trending_up()` gates out receding spikes.
+- `builtin.autonomous_balancer` check — `target="cluster"`, `auto_execute=True`,
+  but ships **disabled**. Enabling it is the deliberate on-switch; even then a
+  guest only moves if allow-listed and dry-run is off.
+- `runtime._run_balancer()` — threshold + trend + per-balancer-cooldown +
+  migration-settle gating, emits one audit event, routes each move through
+  `executor.run()`. Kept off the `_maybe_suggest` path so it can't double-fire.
+- Executor: pre-execute live re-validation (refuse a target that isn't online
+  right now).
+- `NodeMetric.cpu_cores` added (mock + real populate it) so a move's CPU effect
+  on a node is simulable; memory already moves with the guest exactly.
+- Config knobs under `STEWARD_BALANCER_*`; documented in `.env.example`.
+
+**Decisions locked earlier (PR #3):** balance on a blended CPU+mem score
+(default 0.5/0.5); memory is a hard target-headroom constraint.
+
+**Tests.** 76 passing (was 64): new `test_balancer.py` covers scoring, trend,
+move simulation, and the memory/CPU caps; `test_runtime.py` gains an
+enable→imbalance→dry-run-migrate integration test and asserts the balancer stays
+dormant while its check is disabled.
+
+**Still open (Phase 6 tail):** `/api/balancer/simulate` endpoint + a dashboard
+imbalance gauge so the operator can preview moves before enabling.

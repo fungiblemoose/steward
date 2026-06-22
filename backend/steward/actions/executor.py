@@ -205,6 +205,13 @@ class ActionExecutor:
             if target is None:
                 raise GuardrailError("no eligible target node for migration")
             params["target"] = target
+        # Live re-validation: refuse to migrate onto a node that isn't online
+        # right now (it may have dropped since the move was proposed).
+        target = params.get("target")
+        if target is not None and snap is not None:
+            tnode = next((n for n in snap.nodes if n.node == target), None)
+            if tnode is None or tnode.status.value != "online":
+                raise GuardrailError(f"migration target {target!r} is not online")
 
     def _rate_ok(self, atype: ActionType) -> tuple[bool, str]:
         cooldown = self.flags.cooldown_s()

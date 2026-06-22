@@ -44,13 +44,16 @@ Living backlog. Checked = done and tested.
 - [ ] Screenshots / demo gif in README
 - [ ] Test coverage report in CI
 
-## Phase 6 — Tier 0: autonomous live-migration balancer (proposed)
+## Phase 6 — Tier 0: autonomous live-migration balancer (in progress)
 See [`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md). Deterministic, no LLM, free.
-- [ ] `cluster_imbalance(snap, dim)` + `imbalance_cpu/mem` on ClusterSnapshot
-- [ ] `suggest_balancing_migrations()` + `migration_impact()` (pure, tested)
-- [ ] `builtin.autonomous_balancer` check (`auto_execute=True`, off until allow-listed)
-- [ ] Max-concurrent-migrations guardrail + pre-execute live target re-validation
-- [ ] Realistic mock migration delay (so concurrency is provable in tests)
+- [x] `imbalance()` / `blended_imbalance()` + greedy `suggest_balancing_migrations()`
+      (pure `balancer/policy.py`, fully unit-tested)
+- [x] `builtin.autonomous_balancer` check (`auto_execute=True`, ships disabled — opt-in)
+- [x] Runtime balancer step (threshold + trend + settle gating) routing moves
+      through the existing guarded executor; no LLM
+- [x] Pre-execute live target re-validation (refuse a target that isn't online)
+- [x] Migration-settle pacing (don't pile a move on a just-initiated one)
+- [x] `cpu_cores` on NodeMetric so CPU effect of a move is simulable
 - [ ] `/api/balancer/simulate` (show would-be moves) + dashboard imbalance gauge
 
 ## Phase 7 — Tier 2: escalate unresolved incidents to Claude Code (proposed)

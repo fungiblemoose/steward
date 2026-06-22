@@ -60,10 +60,42 @@ def test_predictive_event_fires_on_rising_trend(steward):
 
 
 async def test_no_auto_execute_for_builtin_suggestions(steward):
-    """Builtin suggestions must land in the queue, never auto-fire."""
+    """Builtin suggestions must land in the queue, never auto-fire.
+
+    This also guards that the autonomous balancer stays dormant while disabled
+    (its builtin check ships ``enabled=False``)."""
     for vmid in (101, 102, 103):
         steward.client.inject_load(vmid=vmid, cpu_pct=100)
     for _ in range(8):
         await steward.poll_once()
     executed = steward.store.list_actions(status=ActionStatus.executed.value)
     assert executed == []  # nothing executed automatically
+
+
+async def test_autonomous_balancer_executes_when_enabled(steward):
+    """Enabling the balancer check makes it auto-migrate (dry-run) to rebalance."""
+    bal = next(c for c in steward.store.list_checks() if c.id == "builtin.autonomous_balancer")
+    assert bal.enabled is False  # off by default
+    bal.enabled = True
+    steward.store.upsert_check(bal)
+
+    for vmid in (101, 102, 103):
+        steward.client.inject_load(vmid=vmid, cpu_pct=100)
+
+    def _balancer_migration():
+        return next(
+            (a for a in steward.store.list_actions(status=ActionStatus.executed.value)
+             if a.type.value == "migrate" and a.check_id == "builtin.autonomous_balancer"),
+            None,
+        )
+
+    mig = None
+    for _ in range(12):
+        await steward.poll_once()
+        mig = _balancer_migration()
+        if mig:
+            break
+    assert mig is not None, "balancer never executed a migration"
+    assert mig.dry_run is True            # dry-run by default: simulated, audited
+    assert mig.params.get("target")       # a concrete target was chosen
+    assert mig.source == "rule"
