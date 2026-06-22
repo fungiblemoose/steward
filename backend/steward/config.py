@@ -83,6 +83,16 @@ class Settings(BaseSettings):
     notify_ntfy_url: str = ""
     notify_webhook_url: str = ""
 
+    # ---- Escalation to Claude Code (Tier 2) ----
+    # Off unless a webhook URL is set. Only *repeated, unresolved* incidents
+    # escalate — a single blip never pages anyone.
+    escalation_webhook_url: str = ""
+    escalation_timeout_s: float = 15.0
+    escalation_min_occurrences: int = 3      # fires this many times...
+    escalation_min_age_s: float = 600.0      # ...over at least this long...
+    escalation_cooldown_s: float = 3600.0    # ...and don't re-page within this
+    escalation_ttl_s: float = 1800.0         # quiet this long => treat as resolved
+
     # ---- Auth ----
     auth_token: str = ""
 
@@ -99,6 +109,10 @@ class Settings(BaseSettings):
     @property
     def llm_enabled(self) -> bool:
         return bool(self.llm_base_url.strip())
+
+    @property
+    def escalation_enabled(self) -> bool:
+        return bool(self.escalation_webhook_url.strip())
 
     @property
     def auth_enabled(self) -> bool:

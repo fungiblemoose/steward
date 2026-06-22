@@ -56,12 +56,15 @@ See [`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md). Deterministic, no LLM, free.
 - [x] `cpu_cores` on NodeMetric so CPU effect of a move is simulable
 - [x] `/api/balancer/simulate` (show would-be moves) + dashboard "Cluster balance" gauge
 
-## Phase 7 — Tier 2: escalate unresolved incidents to Claude Code (proposed)
+## Phase 7 — Tier 2: escalate unresolved incidents to Claude Code (in progress)
 See [`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md). Fires rarely → cheap.
-- [ ] Incident dedup/aging in the store (escalate only repeated, unresolved events)
-- [ ] `ClaudeEscalateNotifier` kind + config flags + factory wiring
-- [ ] Incident payload schema (event + history + snapshot + links)
-- [ ] Webhook → remote Claude Code agent that reads the API and *proposes* (never executes)
+- [x] Incident dedup/aging (`incidents.py` `IncidentTracker`: occurrences + age +
+      cooldown + ttl; pure & unit-tested)
+- [x] `WebhookEscalator` (`escalate.py`) + `STEWARD_ESCALATION_*` config + factory
+- [x] Incident payload (incident + recent events + live snapshot + guardrail note)
+- [x] Runtime `_run_escalation` step on the poll loop; off unless webhook set
+- [ ] Worked example: a receiving Claude Code agent (cron/CI) that reads the API
+      and *proposes* into the approval queue (operator-side wiring + sample)
 
 ## Tier 1 — local agentic investigator (DEFERRED — needs hardware)
 Blocked on memory: 16 GB Mac Mini already runs Compel (~9 GB). Seams preserved.

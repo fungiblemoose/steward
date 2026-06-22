@@ -147,3 +147,40 @@ dormant while its check is disabled.
 
 **Still open (Phase 6 tail):** `/api/balancer/simulate` endpoint + a dashboard
 imbalance gauge so the operator can preview moves before enabling.
+
+---
+
+## 2026-06-22 — Phase 7 (Tier 2): escalate unresolved incidents to Claude Code
+
+**Context.** Second build off `AGENTIC_SRE_PLAN.md`. The "page a human only when
+the deterministic tiers can't cope" layer — rare by construction, so it doesn't
+run up a metered bill. Branch: `feat/tier2-escalation`.
+
+**Built.**
+- `incidents.py` — `IncidentTracker`, pure and clock-injected. Folds repeated
+  events for one `(check_id, target)` into an `Incident` (count, first/last ts,
+  worst severity). `due(now)` surfaces only incidents past `min_occurrences`
+  *and* `min_age_s` and not in `cooldown_s`; `prune` ages out quiet ones (ttl).
+- `escalate.py` — `Escalator` protocol with `NoopEscalator` / `WebhookEscalator`
+  (thin fire-and-forget POST; failures logged, never break the loop) + factory.
+  Off unless `STEWARD_ESCALATION_WEBHOOK_URL` is set.
+- `runtime._run_escalation()` on the poll loop: records each warning/critical
+  event into the tracker, POSTs a rich payload (incident + recent events + live
+  snapshot + a "propose, don't bypass guardrails" note) for each due incident,
+  marks it escalated, prunes. The receiving webhook is meant to kick off a
+  Claude Code run that investigates via the read API and proposes into the
+  approval queue.
+- Config `STEWARD_ESCALATION_*`; documented in `.env.example`.
+
+**Decision.** Trigger = ≥3 occurrences over ≥10 min, still firing (locked in
+PR #3). Note the natural cadence: events are check-cooldown-gated, so an incident
+accrues ~one occurrence per check cooldown — escalation is genuinely "kept firing
+for ~10 min," not a burst.
+
+**Tests.** 86 passing (was 77): `test_incidents.py` (occurrence/age/cooldown/ttl/
+severity/per-target logic) + `test_escalation.py` (a repeated incident escalates
+once with the right payload; cooldown blocks re-paging; disabled => silent).
+
+**Still open (Phase 7 tail):** a worked example of the *receiving* side — a small
+Claude Code agent (cron/CI) that consumes the payload, reads the API, and files
+proposals. That's operator-side wiring, out of the daemon.

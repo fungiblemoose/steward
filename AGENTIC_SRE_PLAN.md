@@ -169,11 +169,12 @@ Escalation is a new notifier kind plus a thin incident concept:
 
 ### Milestones (Tier 2)
 
-- [ ] Incident dedup/aging in the store (escalate only unresolved, repeated events)
-- [ ] `ClaudeEscalateNotifier` + config flags + factory wiring
-- [ ] Incident payload schema (event + history + snapshot + links)
-- [ ] Webhook → remote Claude Code agent that reads the API and proposes (not executes)
-- [ ] Audit: every escalation and every agent-proposed action is a row
+- [x] Incident dedup/aging (`incidents.py`: occurrences + age + cooldown + ttl)
+- [x] `WebhookEscalator` (`escalate.py`) + `STEWARD_ESCALATION_*` config + factory
+- [x] Incident payload (incident + recent events + live snapshot + guardrail note)
+- [x] Runtime `_run_escalation` step; off unless a webhook is configured
+- [ ] Worked receiving agent (cron/CI) that reads the API and proposes (not executes)
+- [ ] Audit: every agent-proposed action is already a row via the executor
 
 ---
 

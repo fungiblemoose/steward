@@ -8,6 +8,7 @@ import httpx
 
 from steward.config import Settings
 from steward.models import Severity
+from steward.netutil import post_json
 
 log = logging.getLogger("steward.notify")
 
@@ -45,14 +46,11 @@ class WebhookNotifier:
         self.url = url
 
     async def send(self, title: str, message: str, severity: Severity) -> None:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    self.url,
-                    json={"title": title, "message": message, "severity": severity.value},
-                )
-        except Exception as exc:
-            log.warning("webhook send failed: %s", exc)
+        await post_json(
+            self.url,
+            {"title": title, "message": message, "severity": severity.value},
+            log=log,
+        )
 
 
 def build_notifier(settings: Settings) -> Notifier:
