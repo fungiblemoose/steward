@@ -46,9 +46,35 @@ Decisions made autonomously where the spec left room. Each is reversible.
   infrastructure. The real Proxmox client exists and is wired but is never
   constructed unless explicitly configured, and `proxmoxer` is an optional dep.
 
+## Agentic-SRE direction (proposed — see `AGENTIC_SRE_PLAN.md`)
+- **Tiered by design: deterministic does the routine work; an LLM is rare.** The
+  Tier-0 migration *balancer* is pure deterministic code (no model in the path).
+  A model is only invoked for the hard 5% (Tier 2 escalation now; a local Tier-1
+  investigator later). Rationale: an LLM in a loop is what costs tokens — the win
+  is keeping it out of the loop, not making the loop local.
+- **"Full autonomy within guardrails" still defaults to dry-run + empty
+  allow-list.** Operator chose hands-off autonomy; the balancer ships
+  `auto_execute=True` but a guest only auto-moves once it's allow-listed and
+  `dry_run` is off. Recommended ramp: dry-run burn-in → allow-list low-stakes CTs
+  → flip dry-run. So the first unattended live-migration is deliberate, not a
+  surprise. HA-managed guests stay off the allow-list (don't fight the HA manager).
+- **Tier 1 (local agentic investigator) is deferred on hardware grounds.** The
+  16 GB Mac Mini already runs Compel (~9 GB); no room for a capable agent model.
+  We build the *seams* now (container-exec mirrors the `shell_command` opt-in
+  gate; the brain reuses the LLM client protocol) and slot the agent in when a
+  bigger inference host exists.
+- **Escalation reuses the notifier seam.** Claude-Code escalation is a new
+  notifier kind, fired only on deduped, unresolved, repeated incidents; the agent
+  reads via the API and *proposes* into the approval queue — it never bypasses the
+  executor guardrails.
+
 ## Open questions for the morning
 - Auth is a single shared bearer token (good enough for a homelab behind a VPN).
   Do you want real user accounts / RBAC (viewer vs operator)? Stubbed in ROADMAP.
 - Notification channels shipped: ntfy + generic webhook + noop. Want email/Slack?
 - Retention is a simple time-based prune. Want downsampled rollups for long-term
-  charts (e.g. 1-min raw → 5-min/1-hour aggregates)? Noted in ROADMAP.
+  charts (e.g. 1-min raw → 5-min/1-hour aggregates)?
+- **Balancer dimension**: balance on CPU, memory, or a weighted blend? (Default:
+  CPU, with memory as a hard headroom constraint on candidate targets.)
+- **Escalation trigger**: how many repeats / how long unresolved before paging
+  Claude? (Default proposal: ≥3 occurrences over ≥10 min, still firing.)
