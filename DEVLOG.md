@@ -61,3 +61,51 @@ viewer, charts. Picking those up next.
 
 **Open questions for you:** RBAC vs single shared token? Extra notification
 channels? Downsampled rollups for long-term charts? (All in ASSUMPTIONS.md.)
+
+---
+
+## 2026-06-22 — Frontend, infra, hardening, stretch goals
+
+**Built the rest of the stack and pushed past the MVP.**
+
+- **Frontend SPA** (React 19 / Vite 8 / Tailwind 4): dashboard (live node/VM
+  grid, color-coded pressure bars, per-node CPU/mem trend chart via recharts,
+  demo load injector), checks manager (NL→check, toggle/delete, JSON
+  import/export), approval queue + audit log, events with LLM "Explain",
+  chat panel, and a Logs tab. Header has the global kill switch + dry-run
+  toggle + LLM/mode badges + token field. Live via WebSocket with auto-reconnect.
+- **Packaging:** multi-stage Dockerfile (build SPA → slim non-root python
+  runtime, healthcheck) and a compose file that boots the mock demo with no
+  secrets. `.dockerignore` keeps the context lean.
+- **Hygiene:** `scripts/check_secrets.sh` (staged + tree modes), install-hooks
+  script, and a GitHub Actions CI (secret scan + backend pytest + frontend
+  build). Verified the scanner both passes clean and catches a planted key.
+- **Stretch goals landed:** per-node history charts; **predictive pressure**
+  (deterministic EWMA + least-squares forecast → "projected to exceed X% in
+  ~N min" info events, off the LLM path); check **import/export** as JSON;
+  **`--demo` mode** with scripted incidents; in-UI **log viewer**.
+- **Audit fidelity fix:** real (non-dry) runs now re-read fresh client state for
+  the audit `after`, instead of the cached poll snapshot.
+
+**Verified live, not just unit-tested:**
+- SPA + assets + SPA-fallback served by FastAPI from `frontend/dist`.
+- Full action flow: proposed migration → approved → executed; with dry-run OFF
+  (safe on the mock) the simulator grid actually moves VM 101 pve-1 → pve-3,
+  fully audited. With dry-run ON nothing mutates and the audit shows the
+  simulated outcome.
+- **LLM end-to-end against a real OpenAI-compatible HTTP server** (a tiny mock):
+  `/api/llm/status` enabled, NL→check returned a valid disabled `source=llm`
+  check, grounded Q&A answered. No LLM call sits in the collector loop.
+
+**Tests:** 64 passing (rules, simulator, guardrails, store, runtime, API, LLM,
+predictive). Frontend builds clean.
+
+**Could NOT verify tonight:** the actual `docker build` — Docker Hub
+rate-limited unauthenticated base-image pulls in the build sandbox (429). The
+Dockerfile layout is verified to match what the app serves (same `frontend/dist`
+relative path the dev run uses), and CI will exercise it on a runner with normal
+pull limits. **Try `docker compose up --build` on your machine to confirm.**
+
+**Still open / nice-to-have:** screenshots/gif in the README; coverage report in
+CI; "what changed?" diff view; migration planner v2 (bin-packing); RBAC. All in
+ROADMAP.
