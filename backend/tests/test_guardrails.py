@@ -64,6 +64,7 @@ async def test_real_run_mutates(ctx):
                         auto_execute=True)
     rec = await executor.run(req, approved_by_human=True)
     assert rec.status == ActionStatus.executed and rec.dry_run is False
+    assert rec.after["node"] == "pve-2"  # audited after-state read from client
     fresh = await client.get_cluster_resources()
     assert next(v for v in fresh.vms if v.vmid == 101).node == "pve-2"
 

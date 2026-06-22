@@ -167,7 +167,7 @@ class ActionExecutor:
                 outcome = "DRY-RUN: simulated, no client call made"
             else:
                 await self._perform(rec)
-                rec.after = self._capture(rec)
+                rec.after = await self._capture_live(rec)
                 outcome = "Executed against client"
         except (ProxmoxError, GuardrailError) as exc:
             return self._finish(rec, ActionStatus.failed, f"{type(exc).__name__}: {exc}")
@@ -220,6 +220,22 @@ class ActionExecutor:
         vmid = rec.params.get("vmid")
         if snap is None or vmid is None:
             return {}
+        vm = next((v for v in snap.vms if v.vmid == int(vmid)), None)
+        if vm is None:
+            return {}
+        return {"vmid": vm.vmid, "name": vm.name, "node": vm.node,
+                "status": vm.status.value, "mem_max_mb": vm.mem_max_mb}
+
+    async def _capture_live(self, rec: ActionRecord) -> dict:
+        """Re-read fresh state from the client after a real mutation, so the
+        audit 'after' reflects what actually happened (not the cached poll)."""
+        vmid = rec.params.get("vmid")
+        if vmid is None:
+            return {"notified": True} if rec.type == ActionType.notify else {}
+        try:
+            snap = await self.client.get_cluster_resources()
+        except Exception:
+            return self._capture(rec)
         vm = next((v for v in snap.vms if v.vmid == int(vmid)), None)
         if vm is None:
             return {}
