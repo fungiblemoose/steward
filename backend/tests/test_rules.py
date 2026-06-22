@@ -89,7 +89,10 @@ def test_builtins_are_valid():
     assert {c.id for c in checks} == {
         "builtin.node_cpu_pressure", "builtin.node_mem_pressure",
         "builtin.vm_unexpected_stop", "builtin.storage_near_full",
-        "builtin.cluster_quorum_lost",
+        "builtin.cluster_quorum_lost", "builtin.autonomous_balancer",
     }
     for c in checks:
         assert c.source == "builtin"
+    # the balancer is the one builtin that ships disabled (opt-in)
+    bal = next(c for c in checks if c.id == "builtin.autonomous_balancer")
+    assert bal.enabled is False and bal.auto_execute is True

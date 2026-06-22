@@ -61,6 +61,17 @@ class Settings(BaseSettings):
     action_cooldown_s: float = 300.0
     action_max_per_hour: int = 10
 
+    # ---- Autonomous balancer (Tier 0) ----
+    # The builtin.autonomous_balancer check is the on/off switch (disabled by
+    # default). These tune *how* it balances once enabled.
+    balancer_weight_cpu: float = 0.5         # blended-imbalance weights (CPU vs mem)
+    balancer_weight_mem: float = 0.5
+    balancer_max_target_pct: float = 80.0    # never migrate onto a node past this CPU/mem%
+    balancer_min_improvement: float = 2.0    # min blended-imbalance drop to bother moving
+    balancer_max_moves_per_cycle: int = 1    # moves initiated per poll (converge gradually)
+    balancer_require_trend: bool = True      # only act when imbalance is rising/sustained
+    balancer_migration_settle_s: float = 120.0  # wait for a recent migration to settle first
+
     # ---- LLM ----
     llm_base_url: str = ""
     llm_model: str = "llama3.2:3b"
