@@ -78,6 +78,19 @@ def test_action_run_immediate(client):
     assert r.json()["status"] == "executed"
 
 
+def test_balancer_simulate_endpoint(client):
+    r = client.get("/api/balancer/simulate")
+    assert r.status_code == 200
+    body = r.json()
+    # contract the UI relies on
+    for key in ("enabled", "blended_imbalance", "threshold", "imbalance_cpu",
+                "imbalance_mem", "weights", "would_act", "moves"):
+        assert key in body
+    assert body["enabled"] is False        # balancer ships disabled
+    assert body["would_act"] is False      # never acts while disabled
+    assert isinstance(body["moves"], list)
+
+
 def test_llm_disabled_returns_503(client):
     r = client.post("/api/llm/ask", json={"question": "how are things?"})
     assert r.status_code == 503

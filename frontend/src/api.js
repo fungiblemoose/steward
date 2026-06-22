@@ -45,6 +45,13 @@ export const api = {
   del: (p) => fetch(`/api${p}`, { method: "DELETE", headers: headers() }).then(handle),
 };
 
+// Tier-0 autonomous balancer dry-run preview. Returns the balancer's current
+// view (blended imbalance vs threshold) and the migrations it *would* make
+// right now — nothing is executed.
+export function fetchBalancerSimulation() {
+  return api.get("/balancer/simulate");
+}
+
 export function openWebSocket(onMessage, onStatus) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const t = getToken();

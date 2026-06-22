@@ -337,6 +337,53 @@ class Steward:
             await self.executor.run(req)
         return [ev]
 
+    def simulate_balancer(self) -> dict:
+        """Dry preview of the Tier-0 balancer: the imbalance now and the moves it
+        would make — without executing anything or touching cooldown state.
+
+        Drives the same pure policy as ``_run_balancer`` so the UI shows exactly
+        what an enabled balancer would do. ``would_act`` reflects the real
+        trigger (enabled + over threshold + a move exists); ``moves`` are shown
+        regardless so the operator can preview them before enabling.
+        """
+        from steward.balancer import blended_imbalance, imbalance, suggest_balancing_migrations
+
+        s = self.settings
+        bal = self.store.get_check("builtin.autonomous_balancer")
+        enabled = bool(bal and bal.enabled)
+        threshold = float(bal.condition.threshold) if bal else 0.0
+        snap = self.latest
+        result = {
+            "enabled": enabled,
+            "blended_imbalance": 0.0,
+            "threshold": threshold,
+            "imbalance_cpu": 0.0,
+            "imbalance_mem": 0.0,
+            "weights": {"cpu": s.balancer_weight_cpu, "mem": s.balancer_weight_mem},
+            "would_act": False,
+            "moves": [],
+        }
+        if snap is None:
+            return result
+
+        blended = blended_imbalance(snap, s.balancer_weight_cpu, s.balancer_weight_mem)
+        moves = suggest_balancing_migrations(
+            snap,
+            w_cpu=s.balancer_weight_cpu, w_mem=s.balancer_weight_mem,
+            max_target_pct=s.balancer_max_target_pct,
+            min_improvement=s.balancer_min_improvement,
+            max_moves=s.balancer_max_moves_per_cycle,
+        )
+        result.update(
+            blended_imbalance=round(blended, 2),
+            imbalance_cpu=round(imbalance(snap, "cpu"), 2),
+            imbalance_mem=round(imbalance(snap, "mem"), 2),
+            would_act=enabled and blended > threshold and bool(moves),
+            moves=[{"vmid": m.vmid, "name": m.name, "source": m.source,
+                    "target": m.target, "improvement": round(m.improvement, 2)} for m in moves],
+        )
+        return result
+
     async def _maybe_suggest(self, ev: Event, checks: list[Check]) -> None:
         check = next((c for c in checks if c.id == ev.check_id), None)
         if check is None or check.suggested_action is None:
