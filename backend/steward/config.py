@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     poll_interval_s: float = 10.0
     ring_buffer_size: int = 360
 
+    # ---- Demo ----
+    # When true (mock only), scripts periodic incidents for screenshots/gifs.
+    demo_mode: bool = False
+
     # ---- Retention ----
     metrics_retention_hours: int = 72
 

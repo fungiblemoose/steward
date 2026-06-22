@@ -24,6 +24,32 @@ export default function Checks({ llmEnabled }) {
     await api.del(`/checks/${id}`);
     load();
   }
+  async function exportChecks() {
+    const data = await api.get("/checksets/export");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "steward-checks.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importChecks(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const payload = JSON.parse(text);
+      const r = await api.post("/checksets/import", payload);
+      alert(`Imported ${r.imported} checks` + (r.errors.length ? `, ${r.errors.length} errors` : ""));
+      load();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    }
+    e.target.value = "";
+  }
+
   async function createFromNL() {
     setError("");
     setBusy(true);
@@ -41,6 +67,19 @@ export default function Checks({ llmEnabled }) {
 
   return (
     <div className="p-5 space-y-5">
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={exportChecks}
+          className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          Export JSON
+        </button>
+        <label className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:bg-gray-800 cursor-pointer">
+          Import JSON
+          <input type="file" accept="application/json" onChange={importChecks} className="hidden" />
+        </label>
+      </div>
+
       <section className="rounded-lg border border-gray-800 bg-[#0d1320] p-4">
         <h3 className="text-sm font-medium mb-2">Create a check in plain English</h3>
         {!llmEnabled && (

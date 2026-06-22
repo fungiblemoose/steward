@@ -44,6 +44,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # Feed the in-memory ring buffer that powers the UI log viewer.
+    from steward.logbuf import ring_handler
+
+    root = logging.getLogger()
+    if ring_handler not in root.handlers:
+        root.addHandler(ring_handler)
+    # Set the steward logger level explicitly so our records flow regardless of
+    # whatever configured the root logger (e.g. pytest's capture, uvicorn).
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.getLogger("steward").setLevel(level)
     app = FastAPI(title="Steward", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
 
@@ -117,6 +127,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         return [e.model_dump(mode="json") for e in rows]
 
+    @app.get("/api/logs", dependencies=[Depends(auth_dep)])
+    async def logs(limit: int = 200, level: Optional[str] = None):
+        from steward.logbuf import ring_handler
+
+        return ring_handler.tail(limit=limit, level=level)
+
     # ------------------------------------------------------------------ #
     # Checks CRUD
     # ------------------------------------------------------------------ #
@@ -128,6 +144,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def create_check(check: Check, sw: Steward = Depends(get_steward)):
         sw.store.upsert_check(check)
         return check.model_dump(mode="json")
+
+    @app.get("/api/checksets/export", dependencies=[Depends(auth_dep)])
+    async def export_checks(sw: Steward = Depends(get_steward)):
+        return {"version": 1, "checks": [c.model_dump(mode="json") for c in sw.store.list_checks()]}
+
+    @app.post("/api/checksets/import", dependencies=[Depends(auth_dep)])
+    async def import_checks(payload: dict, sw: Steward = Depends(get_steward)):
+        raw = payload.get("checks", payload if isinstance(payload, list) else [])
+        imported, errors = 0, []
+        for item in raw:
+            try:
+                chk = Check.model_validate(item)
+                sw.store.upsert_check(chk)
+                imported += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append(str(exc))
+        return {"imported": imported, "errors": errors}
 
     @app.get("/api/checks/{check_id}", dependencies=[Depends(auth_dep)])
     async def get_check(check_id: str, sw: Steward = Depends(get_steward)):

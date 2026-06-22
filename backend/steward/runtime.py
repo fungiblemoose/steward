@@ -47,6 +47,7 @@ class Steward:
         self.latest: Optional[ClusterSnapshot] = None
         self._subscribers: set[asyncio.Queue] = set()
         self._task: Optional[asyncio.Task] = None
+        self._demo_task: Optional[asyncio.Task] = None
         self._stopping = asyncio.Event()
         self._cycle = 0
 
@@ -129,16 +130,24 @@ class Steward:
             self._stopping.clear()
             self._task = asyncio.create_task(self._loop(), name="steward-collector")
             log.info("collector started (interval=%ss)", self.settings.poll_interval_s)
+        if self.settings.demo_mode and self._demo_task is None:
+            from steward.demo import run_demo
+
+            self._demo_task = asyncio.create_task(
+                run_demo(self.client, self._stopping), name="steward-demo"
+            )
 
     async def stop(self) -> None:
         self._stopping.set()
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for attr in ("_task", "_demo_task"):
+            task = getattr(self, attr)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, attr, None)
         await self.client.close()
         self.store.close()
 

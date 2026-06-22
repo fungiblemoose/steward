@@ -6,8 +6,9 @@ import Checks from "./components/Checks";
 import Actions from "./components/Actions";
 import Events from "./components/Events";
 import Chat from "./components/Chat";
+import Logs from "./components/Logs";
 
-const TABS = ["Dashboard", "Checks", "Actions", "Events", "Chat"];
+const TABS = ["Dashboard", "Checks", "Actions", "Events", "Chat", "Logs"];
 
 export default function App() {
   const [tab, setTab] = useState("Dashboard");
@@ -65,6 +66,7 @@ export default function App() {
         {tab === "Actions" && <Actions />}
         {tab === "Events" && <Events liveEvents={liveEvents} llmEnabled={flags?.llm_enabled} />}
         {tab === "Chat" && <Chat llmEnabled={flags?.llm_enabled} />}
+        {tab === "Logs" && <Logs />}
       </main>
     </div>
   );
