@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from steward.models import ActionStatus
+from steward.models import ActionStatus, ClusterSnapshot, NodeMetric, now_ts
 
 
 async def test_poll_once_persists_and_seeds(steward):
@@ -39,6 +39,24 @@ async def test_flags_toggle_persist(steward):
     assert steward.is_dry_run() is False
     steward.set_allowlist([1, 2, 3])
     assert steward.allowlist() == [1, 2, 3]
+
+
+def test_predictive_event_fires_on_rising_trend(steward):
+    # synthesize a steadily rising CPU trend on pve-1 in the ring buffer
+    base = now_ts() - 200
+    for i in range(15):
+        cpu = 50 + i * 2.5  # rising toward 90
+        snap = ClusterSnapshot(
+            ts=base + i * steward.settings.poll_interval_s,
+            nodes=[NodeMetric(node="pve-1", cpu_pct=cpu, mem_used_mb=1000, mem_total_mb=4000)],
+        )
+        steward.ring.append(snap)
+    latest = ClusterSnapshot(
+        ts=now_ts(),
+        nodes=[NodeMetric(node="pve-1", cpu_pct=85, mem_used_mb=1000, mem_total_mb=4000)],
+    )
+    events = steward._run_predictions(latest)
+    assert any(e.check_id == "predictive.node_cpu_pct" and e.target == "pve-1" for e in events)
 
 
 async def test_no_auto_execute_for_builtin_suggestions(steward):

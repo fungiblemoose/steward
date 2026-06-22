@@ -40,18 +40,19 @@ Living backlog. Checked = done and tested.
 - [x] Secret-scan hook + CI
 - [x] README quickstart
 - [x] Retention/prune wired into the loop
-- [ ] Structured logging polish + in-UI log viewer (basic version shipped)
+- [x] In-UI log viewer (ring-buffer handler + Logs tab)
 - [ ] Screenshots / demo gif in README
 - [ ] Test coverage report in CI
 
-## Stretch (pull from here next)
-- [ ] Historical charts on the dashboard (series API exists; UI charts TODO)
+## Stretch
+- [x] Historical charts on the dashboard (per-node CPU/mem trend via series API)
+- [x] Predictive pressure (EWMA + linear forecast warn-before-threshold)
+- [x] Check import/export as JSON
+- [x] `--demo` mode with scripted incidents
 - [ ] "What changed?" diff between two timestamps
-- [ ] Predictive pressure (EWMA/trend warn-before-threshold)
 - [ ] Migration planner v2 (bin-packing across the cluster) + LLM narration
-- [ ] Check templates library + import/export JSON
+- [ ] Check templates library (curated starter sets)
 - [ ] Multi-cluster support
 - [ ] RBAC (viewer vs operator)
-- [ ] `--demo` mode with scripted incidents
 - [ ] Pluggable backends beyond Proxmox behind the same protocol
 - [ ] Webhook/event bus for external subscribers

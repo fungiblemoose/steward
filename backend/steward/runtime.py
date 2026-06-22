@@ -163,6 +163,9 @@ class Steward:
         events = self._run_checks(checks, snap)
         events += await self._run_active_probes(checks, snap)
 
+        if self.settings.predictive_enabled:
+            events += self._run_predictions(snap)
+
         for ev in events:
             ev.id = await asyncio.to_thread(self.store.insert_event, ev)
             if ev.severity in (Severity.warning, Severity.critical):
@@ -216,6 +219,45 @@ class Steward:
                     continue
                 self.engine._last_fire[key] = now_ts()
                 events.append(ev)
+        return events
+
+    def _run_predictions(self, snap: ClusterSnapshot) -> list[Event]:
+        """Emit info-level 'projected to exceed' events using the ring buffer."""
+        from steward.rules.predict import forecast_threshold
+
+        if len(self.ring) < 4:
+            return []
+        threshold = self.settings.predictive_threshold
+        events: list[Event] = []
+        for metric in ("cpu_pct", "mem_pct"):
+            for node in snap.nodes:
+                series = [
+                    next((n.__getattribute__(metric) for n in s.nodes if n.node == node.node), None)
+                    for s in self.ring
+                ]
+                series = [v for v in series if v is not None]
+                fc = forecast_threshold(
+                    series, threshold=threshold, dt_s=self.settings.poll_interval_s,
+                    lookahead_s=self.settings.predictive_lookahead_s,
+                )
+                if fc is None or not fc.will_cross or fc.current >= threshold:
+                    continue  # already-over is the reactive check's job
+                check_id = f"predictive.node_{metric}"
+                key = (check_id, node.node)
+                last = self.engine._last_fire.get(key)
+                if last is not None and (snap.ts - last) < self.settings.predictive_cooldown_s:
+                    continue
+                self.engine._last_fire[key] = snap.ts
+                mins = (fc.seconds_to_threshold or 0) / 60.0
+                events.append(Event(
+                    ts=snap.ts, check_id=check_id, check_name=f"Predicted {metric} pressure",
+                    severity=Severity.info, target=node.node, value=fc.current,
+                    message=(f"Node {node.node} {metric} trending up "
+                             f"({fc.current:.0f}% now); projected to exceed {threshold:.0f}% "
+                             f"in ~{mins:.0f} min"),
+                    context={"metric": metric, "current": fc.current,
+                             "slope_per_s": fc.slope_per_s, "threshold": threshold},
+                ))
         return events
 
     async def _maybe_suggest(self, ev: Event, checks: list[Check]) -> None:

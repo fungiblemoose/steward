@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # ---- Retention ----
     metrics_retention_hours: int = 72
 
+    # ---- Predictive pressure (deterministic EWMA forecast) ----
+    predictive_enabled: bool = True
+    predictive_threshold: float = 90.0
+    predictive_lookahead_s: float = 1800.0
+    predictive_cooldown_s: float = 600.0
+
     # ---- Action guardrails ----
     dry_run: bool = True
     paused: bool = False
