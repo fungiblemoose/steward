@@ -16,6 +16,8 @@ from typing import Optional
 from steward.actions.executor import ActionExecutor, RuntimeFlags
 from steward.balancer import blended_imbalance, suggest_balancing_migrations, trending_up
 from steward.checks.probes import run_probe
+from steward.escalate import build_escalator
+from steward.incidents import IncidentTracker
 from steward.checks.schema import Check, ProbeType
 from steward.config import Settings
 from steward.models import (
@@ -42,6 +44,13 @@ class Steward:
         self.client = build_client(settings)
         self.engine = RuleEngine()
         self.notifier = build_notifier(settings)
+        self.escalator = build_escalator(settings)
+        self.incidents = IncidentTracker(
+            min_occurrences=settings.escalation_min_occurrences,
+            min_age_s=settings.escalation_min_age_s,
+            cooldown_s=settings.escalation_cooldown_s,
+            ttl_s=settings.escalation_ttl_s,
+        )
         self.ring: collections.deque[ClusterSnapshot] = collections.deque(
             maxlen=settings.ring_buffer_size
         )
@@ -172,12 +181,17 @@ class Steward:
             if ev.severity in (Severity.warning, Severity.critical):
                 await self.notifier.send(f"[{ev.severity.value}] {ev.check_name}", ev.message,
                                          ev.severity)
+            self.incidents.record(check_id=ev.check_id, check_name=ev.check_name,
+                                  target=ev.target, severity=ev.severity, ts=ev.ts)
             await self._maybe_suggest(ev, checks)
 
         # Tier-0 autonomous balancer runs its own deterministic step: it executes
         # moves directly (never via _maybe_suggest, which would double-fire).
         balancer_events = await self._run_balancer(checks, snap)
         events += balancer_events
+
+        # Tier-2: page a human (Claude Code) for repeated, unresolved incidents.
+        await self._run_escalation(snap)
 
         self._broadcast({
             "type": "tick",
@@ -336,6 +350,45 @@ class Steward:
             )
             await self.executor.run(req)
         return [ev]
+
+    async def _run_escalation(self, snap: ClusterSnapshot) -> None:
+        """Tier-2 escalation: hand repeated, unresolved incidents to Claude Code.
+
+        Off unless an escalation webhook is configured. The incident tracker only
+        surfaces a (check, target) that has fired enough times over enough time
+        and isn't in cooldown, so a transient blip never pages anyone.
+        """
+        if not self.settings.escalation_enabled:
+            return
+        now = snap.ts
+        for inc in self.incidents.due(now):
+            try:
+                await self.escalator.escalate(self._escalation_payload(inc, snap))
+            except Exception:  # noqa: BLE001 - escalation must never break the loop
+                log.exception("escalation failed for %s/%s", inc.check_id, inc.target)
+                continue
+            self.incidents.mark_escalated(inc.key(), now)
+            log.warning("escalated incident %s/%s (count=%s, age=%.0fs) to external agent",
+                        inc.check_id, inc.target, inc.count, inc.age_s)
+        self.incidents.prune(now)
+
+    def _escalation_payload(self, inc, snap: ClusterSnapshot) -> dict:
+        recent = self.store.list_events(check_id=inc.check_id, limit=20)
+        return {
+            "kind": "steward.incident",
+            "incident": {
+                "check_id": inc.check_id, "check_name": inc.check_name,
+                "target": inc.target, "severity": inc.severity.value,
+                "count": inc.count, "first_ts": inc.first_ts, "last_ts": inc.last_ts,
+                "age_s": round(inc.age_s, 1),
+            },
+            "snapshot": snap.model_dump(mode="json"),
+            "recent_events": [e.model_dump(mode="json") for e in recent
+                              if e.target == inc.target][:10],  # fetch 20, keep ≤10 for this target
+            "note": ("Unresolved incident escalated by Steward. Investigate via the read API "
+                     "and propose remediation into the approval queue — do not bypass the "
+                     "executor guardrails."),
+        }
 
     def simulate_balancer(self) -> dict:
         """Dry preview of the Tier-0 balancer: the imbalance now and the moves it
