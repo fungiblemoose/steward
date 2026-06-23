@@ -89,7 +89,9 @@ gracefully and everything else keeps working.
   FastAPI backend
    ├─ Collector        deterministic poll loop → metrics store + ring buffer
    ├─ Rule engine      pure threshold evaluation → events (per-target cooldown)
+   ├─ Balancer (T0)    deterministic blended CPU+mem rebalancing → guarded moves
    ├─ Action executor  the only thing that mutates; layered guardrails
+   ├─ Incidents (T2)   dedup/age repeated events → escalate the unresolved
    ├─ LLM service      async, off the loop: NL→check · Q&A · explain
    └─ SQLite           metrics (time-series) · checks · events · actions (audit)
         │
@@ -97,6 +99,11 @@ gracefully and everything else keeps working.
    ├─ Mock simulator   in-memory fake cluster + load injector  (default)
    └─ Real (proxmoxer) gated behind config; never run in this build
 ```
+
+This is the deterministic spine of a **local agentic homelab SRE** — see
+[`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md) for the full 3-tier design (Tier 0
+autonomous balancing + Tier 2 escalation are built; the local investigator is
+deferred). No LLM sits in any of these paths.
 
 See [`ASSUMPTIONS.md`](ASSUMPTIONS.md) for design decisions and
 [`backend/steward/`](backend/steward) for the modules.
@@ -148,6 +155,42 @@ executor that enforces, **in order**:
 
 ---
 
+## Autonomous balancer (Tier 0)
+
+A deterministic, **no-LLM** load balancer. When blended CPU+mem load imbalance
+(stddev across nodes) crosses a threshold *and* is trending up, it picks the
+guest+target that most reduce imbalance and live-migrates — through the same
+guarded executor as everything else. Memory is a **hard** target-headroom
+constraint; CPU has a cap too.
+
+It ships **off**. Turning it on is a deliberate, staged opt-in:
+
+1. **Enable** the `builtin.autonomous_balancer` check (Checks tab, or
+   `POST /api/checks/builtin.autonomous_balancer/toggle`). With dry-run ON it now
+   *previews* moves — watch the **Dashboard → Cluster balance** card and the audit
+   log to see what it would do.
+2. **Allow-list** the guests you'll let it move (`STEWARD_ACTION_ALLOWLIST` or the
+   header). Keep HA-managed guests off the list.
+3. **Flip dry-run off** when you trust it. Now allow-listed guests actually move.
+
+`GET /api/balancer/simulate` returns the live imbalance + the moves it would make
+without executing. Tuning knobs are `STEWARD_BALANCER_*` (weights, target cap,
+min-improvement, moves/cycle, trend requirement).
+
+## Escalation to Claude Code (Tier 2)
+
+The "page a human only when the deterministic tiers can't cope" layer — rare by
+design. Repeated, unresolved events for the same `(check, target)` are folded
+into an **incident**; when one crosses `≥ min_occurrences` over `≥ min_age` and
+isn't in cooldown, Steward POSTs a rich payload (incident + recent events + live
+snapshot) to `STEWARD_ESCALATION_WEBHOOK_URL`. Wire that webhook to kick off a
+**Claude Code run** that investigates via the read API and *proposes* remediation
+into the approval queue — it never bypasses the guardrails. Off unless the
+webhook is set. See [`examples/escalation_receiver.py`](examples/escalation_receiver.py)
+for a worked receiver.
+
+---
+
 ## Configuration
 
 All config is environment-driven (prefix `STEWARD_`). Copy
@@ -162,6 +205,10 @@ repo.** Highlights:
 | `STEWARD_ACTION_ALLOWLIST` | _(empty)_ | CSV of VMIDs eligible for auto-action |
 | `STEWARD_POLL_INTERVAL_S` | `10` | Collector cadence |
 | `STEWARD_METRICS_RETENTION_HOURS` | `72` | Time-series prune horizon |
+| `STEWARD_BALANCER_WEIGHT_CPU` / `_MEM` | `0.5` / `0.5` | Blended-imbalance weights (Tier 0) |
+| `STEWARD_BALANCER_MAX_TARGET_PCT` | `80` | Never migrate onto a node past this CPU/mem% |
+| `STEWARD_ESCALATION_WEBHOOK_URL` | _(empty)_ | Tier-2 escalation target (blank = off) |
+| `STEWARD_ESCALATION_MIN_OCCURRENCES` | `3` | Fires this many times before paging |
 | `STEWARD_LLM_BASE_URL` | _(empty)_ | OpenAI-compatible endpoint (blank = off) |
 | `STEWARD_AUTH_TOKEN` | _(empty)_ | Shared bearer token for UI/API (blank = open) |
 | `STEWARD_NOTIFY_KIND` | `none` | `none` \| `ntfy` \| `webhook` |
