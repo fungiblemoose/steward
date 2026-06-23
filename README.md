@@ -215,29 +215,17 @@ repo.** Highlights:
 
 ---
 
-## Running as a service
+## Running as a service / deploying to a real cluster
 
-**systemd** (bare metal / LXC):
+For the full, safety-staged path from the mock demo to watching (and eventually
+acting on) a **real** Proxmox cluster — read-only token, dry-run burn-in,
+out-of-band alerting, then the staged balancer rollout — see **[DEPLOY.md](DEPLOY.md)**.
 
-```ini
-# /etc/systemd/system/steward.service
-[Unit]
-Description=Steward
-After=network-online.target
-
-[Service]
-WorkingDirectory=/opt/steward/backend
-EnvironmentFile=/opt/steward/.env
-ExecStart=/opt/steward/backend/.venv/bin/python -m steward
-Restart=on-failure
-User=steward
-
-[Install]
-WantedBy=multi-user.target
-```
-
-In a **Proxmox LXC**, run it as the systemd unit above, or just
-`docker compose up -d` inside the container.
+Quick version: a ready systemd unit is in
+[`deploy/steward.service`](deploy/steward.service) (run in a small LXC or any
+always-on box), or `docker compose up -d`. Keep `STEWARD_DRY_RUN=true` and an
+empty allow-list until you've watched it against live data and confirmed alerts
+reach you off-box.
 
 ---
 
@@ -253,6 +241,8 @@ In a **Proxmox LXC**, run it as the systemd unit above, or just
 
 ## Project docs
 
+- [`DEPLOY.md`](DEPLOY.md) — deploy to a real Proxmox cluster, safely & in stages.
+- [`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md) — the 3-tier agentic-SRE design.
 - [`DEVLOG.md`](DEVLOG.md) — running build log.
 - [`ROADMAP.md`](ROADMAP.md) — living backlog (phases + stretch goals).
 - [`ASSUMPTIONS.md`](ASSUMPTIONS.md) — every autonomous decision, and why.
