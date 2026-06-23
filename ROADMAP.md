@@ -42,7 +42,8 @@ Living backlog. Checked = done and tested.
 - [x] Retention/prune wired into the loop
 - [x] In-UI log viewer (ring-buffer handler + Logs tab)
 - [ ] Screenshots / demo gif in README
-- [ ] Test coverage report in CI
+- [x] Test coverage report + gate in CI (pytest-cov, fail_under=85; real.py/demo.py
+      omitted by design); probes.py now properly tested
 
 ## Phase 6 — Tier 0: autonomous live-migration balancer ✅
 See [`AGENTIC_SRE_PLAN.md`](AGENTIC_SRE_PLAN.md). Deterministic, no LLM, free.

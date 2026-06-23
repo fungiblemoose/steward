@@ -21,6 +21,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "anyio==4.14.0",
+    "pytest-cov==7.0.0",
 ]
 
 [project.scripts]
@@ -38,6 +39,22 @@ include = ["steward*"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = ["error::DeprecationWarning:steward.*"]
+
+[tool.coverage.run]
+source = ["steward"]
+# Omitted by design: real.py is the gated proxmoxer client (never run in
+# dev/CI — there is no live cluster), demo.py is the scripted-incident driver.
+omit = ["steward/proxmox/real.py", "steward/demo.py"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
 
 [tool.ruff]
 line-length = 100
