@@ -78,7 +78,8 @@ Blocked on memory: 16 GB Mac Mini already runs Compel (~9 GB). Seams preserved.
 - [x] Predictive pressure (EWMA + linear forecast warn-before-threshold)
 - [x] Check import/export as JSON
 - [x] `--demo` mode with scripted incidents
-- [ ] "What changed?" diff between two timestamps
+- [x] "What changed?" diff (`diffing.py` + `/api/diff` + dashboard "Recent changes"
+      card): node load swings, guest migrations/power changes, appeared/disappeared
 - [ ] ~~Migration planner v2 (bin-packing)~~ → promoted to **Phase 6**
 - [ ] Check templates library (curated starter sets)
 - [ ] Multi-cluster support

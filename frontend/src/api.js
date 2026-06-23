@@ -52,6 +52,13 @@ export function fetchBalancerSimulation() {
   return api.get("/balancer/simulate");
 }
 
+// Recent cluster changes over a trailing window (since_s seconds): per-node
+// load/status deltas and per-guest migrations, power changes, and
+// appear/disappear events. Nothing is executed — this is a read of history.
+export function fetchDiff(sinceS = 300) {
+  return api.get(`/diff?since_s=${sinceS}`);
+}
+
 export function openWebSocket(onMessage, onStatus) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const t = getToken();
