@@ -1,0 +1,26 @@
+# Steward systemd unit. Install to /etc/systemd/system/steward.service
+# See DEPLOY.md for the full walkthrough (token, .env, staged rollout).
+[Unit]
+Description=Steward — local Proxmox SRE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=steward
+Group=steward
+WorkingDirectory=/opt/steward/app/backend
+EnvironmentFile=/opt/steward/.env
+ExecStart=/opt/steward/app/backend/.venv/bin/python -m steward
+Restart=on-failure
+RestartSec=5
+
+# Hardening (Steward only needs to read its own dir + reach the network).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/steward
+
+[Install]
+WantedBy=multi-user.target
