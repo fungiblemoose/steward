@@ -254,6 +254,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def balancer_simulate(sw: Steward = Depends(get_steward)):
         return sw.simulate_balancer()
 
+    @app.get("/api/diff", dependencies=[Depends(auth_dep)])
+    async def diff(since_s: float = 300.0, sw: Steward = Depends(get_steward)):
+        return sw.diff(since_s)
+
     # ------------------------------------------------------------------ #
     # LLM features (degrade gracefully when not configured)
     # ------------------------------------------------------------------ #

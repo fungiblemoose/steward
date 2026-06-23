@@ -390,6 +390,27 @@ class Steward:
                      "executor guardrails."),
         }
 
+    def diff(self, since_s: float = 300.0) -> dict:
+        """What changed over roughly the last ``since_s`` seconds.
+
+        Compares the latest snapshot against the ring-buffer snapshot closest to
+        (and at least as old as) the cutoff — falling back to the oldest we hold.
+        """
+        from steward.diffing import snapshot_diff
+
+        after = self.latest
+        empty = {"from_ts": None, "to_ts": None, "span_s": 0.0, "nodes": [], "vms": []}
+        if after is None or len(self.ring) < 2:
+            return empty
+        cutoff = after.ts - since_s
+        older = [s for s in self.ring if s.ts <= cutoff and s is not after]
+        before = older[-1] if older else self.ring[0]
+        if before is after:
+            return empty
+        result = snapshot_diff(before, after)
+        result.update(from_ts=before.ts, to_ts=after.ts, span_s=round(after.ts - before.ts, 1))
+        return result
+
     def simulate_balancer(self) -> dict:
         """Dry preview of the Tier-0 balancer: the imbalance now and the moves it
         would make — without executing anything or touching cooldown state.

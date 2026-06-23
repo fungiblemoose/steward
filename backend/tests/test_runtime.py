@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from steward.models import ActionStatus, ClusterSnapshot, NodeMetric, now_ts
+from steward.models import (
+    ActionStatus,
+    ClusterSnapshot,
+    NodeMetric,
+    VMMetric,
+    VMStatus,
+    now_ts,
+)
 
 
 async def test_poll_once_persists_and_seeds(steward):
@@ -70,6 +77,36 @@ async def test_no_auto_execute_for_builtin_suggestions(steward):
         await steward.poll_once()
     executed = steward.store.list_actions(status=ActionStatus.executed.value)
     assert executed == []  # nothing executed automatically
+
+
+def test_diff_picks_baseline_and_reports_changes(steward):
+    base = now_ts()
+    old = ClusterSnapshot(
+        ts=base - 600,
+        nodes=[NodeMetric(node="pve-1", cpu_pct=90, mem_used_mb=8000, mem_total_mb=10000)],
+        vms=[VMMetric(vmid=1, name="x", node="pve-1", status=VMStatus.running, cpu_pct=80, cores=2)],
+    )
+    new = ClusterSnapshot(
+        ts=base,
+        nodes=[NodeMetric(node="pve-1", cpu_pct=40, mem_used_mb=4000, mem_total_mb=10000)],
+        vms=[VMMetric(vmid=1, name="x", node="pve-2", status=VMStatus.running, cpu_pct=30, cores=2)],
+    )
+    steward.ring.clear()
+    steward.ring.append(old)
+    steward.ring.append(new)
+    steward.latest = new
+
+    d = steward.diff(since_s=300)
+    assert d["span_s"] == 600.0
+    assert d["nodes"][0]["cpu_delta"] == -50.0
+    assert any(v.get("moved") == {"from": "pve-1", "to": "pve-2"} for v in d["vms"])
+
+
+def test_diff_empty_without_history(steward):
+    steward.ring.clear()
+    steward.latest = None
+    d = steward.diff()
+    assert d["nodes"] == [] and d["vms"] == [] and d["span_s"] == 0.0
 
 
 async def test_autonomous_balancer_executes_when_enabled(steward):

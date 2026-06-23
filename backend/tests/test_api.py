@@ -78,6 +78,15 @@ def test_action_run_immediate(client):
     assert r.json()["status"] == "executed"
 
 
+def test_diff_endpoint(client):
+    r = client.get("/api/diff?since_s=300")
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("from_ts", "to_ts", "span_s", "nodes", "vms"):
+        assert key in body
+    assert isinstance(body["nodes"], list) and isinstance(body["vms"], list)
+
+
 def test_balancer_simulate_endpoint(client):
     r = client.get("/api/balancer/simulate")
     assert r.status_code == 200
